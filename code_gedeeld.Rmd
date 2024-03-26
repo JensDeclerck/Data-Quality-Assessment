@@ -1,0 +1,355 @@
+---
+title: "Benchmark lengte en gewicht - iHD"
+date: "2023-12-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Voorbereiding
+
+```{r, message=FALSE, warning=FALSE}
+
+require(tidyverse)
+require(RODBC)
+```
+
+
+## Noemer ophalen uit IQVIA DWH
+
+```{r, message=FALSE, warning=FALSE}
+
+### optie 1: via file
+#### Ophalen noemer
+noemer <-  read_csv2(noemer.csv")
+
+
+### optie 2: via query:
+sql_query <- "SELECT
+                v_ha_deflt_hapat_curr_patient.deflt_hapat_bk AS patiënt___business_sleutel, 
+                v_ha_hcend_time_time.hcend_time_year_rnk AS ontslagdatum___jaar, 
+                v_ha_deflt_haadmfile_administrative_file.deflt_haadmfile_bk AS administratief_dossier___business_sleutel, 
+                v_ha_deflt_haclnfile_clinical_file.deflt_haclnfile_bk AS medisch_dossier___business_sleutel, 
+                SUM(v_f_ha_care_episode_dyn.hacarepsd_main_gate_admission_qty) AS zorgperiode___aantal_grote_poort_opnames, 
+                v_ha_last_inpat_habedidx_bedindex.last_inpat_habedidx_bk AS C___bedindex__administratief____business_sleutel
+            FROM
+                dbo.v_ha_deflt_haadmfile_administrative_file v_ha_deflt_haadmfile_administrative_file
+                    INNER JOIN dbo.v_f_ha_care_episode_dyn v_f_ha_care_episode_dyn
+                    ON v_ha_deflt_haadmfile_administrative_file.deflt_haadmfile_key = v_f_ha_care_episode_dyn.deflt_haadmfile_key
+                        INNER JOIN dbo.v_ha_deflt_haclnfile_clinical_file v_ha_deflt_haclnfile_clinical_file
+                        ON v_ha_deflt_haclnfile_clinical_file.deflt_haclnfile_key = v_f_ha_care_episode_dyn.deflt_haclnfile_key
+                            INNER JOIN dbo.v_ha_deflt_hapat_curr_patient v_ha_deflt_hapat_curr_patient
+                            ON v_ha_deflt_hapat_curr_patient.deflt_hapat_key = v_f_ha_care_episode_dyn.deflt_hapat_key
+                                INNER JOIN dbo.v_ha_hcend_time_time v_ha_hcend_time_time
+                                ON v_ha_hcend_time_time.hcend_time_key = v_f_ha_care_episode_dyn.hcend_time_key
+                                    INNER JOIN dbo.v_ha_last_inpat_habedidx_bedindex v_ha_last_inpat_habedidx_bedindex
+                                    ON v_ha_last_inpat_habedidx_bedindex.last_inpat_habedidx_key = v_f_ha_care_episode_dyn.last_inpat_habedidx_key 
+            WHERE 
+                v_ha_hcend_time_time.hcend_time_year_rnk IN (2021,
+                    2022 ) AND
+                v_ha_last_inpat_habedidx_bedindex.last_inpat_habedidx_bk IN ( 
+                    'C', 
+                    'E', 
+                    'G' ) AND
+                v_f_ha_care_episode_dyn.hacarepsd_main_gate_admission_qty > 0 
+            GROUP BY 
+                v_ha_deflt_hapat_curr_patient.deflt_hapat_bk, 
+                v_ha_hcend_time_time.hcend_time_year_rnk, 
+                v_ha_deflt_haadmfile_administrative_file.deflt_haadmfile_bk, 
+                v_ha_deflt_haclnfile_clinical_file.deflt_haclnfile_bk, 
+                v_ha_last_inpat_habedidx_bedindex.last_inpat_habedidx_bk"
+
+
+
+```
+
+
+## Lengte en gewicht ophalen uit je EPD
+
+```{r, message=FALSE, warning=FALSE}
+
+### connectie met postgress maken voor lengte en gewicht voor alle adremanummmers
+pg_conn <- create_postgres_connection()
+
+weight_final <- noemer %>%
+  left_join(weight_selection) 
+
+## code specifiek UZG weggelaten!
+
+height_final <- noemer %>%
+  left_join(height_selection) 
+```
+
+
+# Start benchmark
+
+## Prepare the data
+
+This are all the codes containing information on how to perform the assessment.
+You need to do this for the 3 seperate cases: Pediatrics, Geriatrics, Surgery. 
+
+## 1. Create a dataset for patients' weight
+
+This is an example dataset. In this step you should read in your file containing Weight.
+Please make sure that you use the same terms for the dataset: `weight_data`.
+
+This will provide you with 3 datasets: 
+
+- `weight_data_geriatry`, 
+- `weight_data_surgical`, 
+- `weight_data_pediatry`
+
+This serves as an example.
+
+- `weight_data_geriatry <- data.frame(Patient_ID = 1:20, Weight_kg = c(70, 65, 80, 72, 75, 68, 90, 82, 78, 69, 71, 74, 79, 73, 76, 85, 77, 88, 81, 84) )`
+- repeat for surgical: `weight_data_surgical`
+- repeat for pediatry: `weight_data_pediatry`
+
+
+
+```{r}
+#library(ggplot2)
+#library(dplyr)
+
+# This are all the codes containing information on how to perform the assessment.
+# You need to do this for the 3 seperate cases: Pediatrics, Geriatrics, Surgery. 
+
+# 1. Create a dataset for patients' weight
+## This is an example dataset. In this step you should read in your file containing Weight.
+## Please make sure that you use the same terms for the dataset --> weight_data.
+## This will provide you with 3 datasets: weight_data_geriatry, weight_data_surgical, weight_data_pediatry
+### This serves as an example.
+# weight_data_geriatry <- data.frame(
+#   Patient_ID = 1:20,
+#   Weight_kg = c(70, 65, 80, 72, 75, 68, 90, 82, 78, 69, 71, 74, 79, 73, 76, 85, 77, 88, 81, 84)
+# )
+### repeat for surgical: weight_data_surgical
+### repeat for pediatry: weight_data_pediatry
+
+weight_data <- weight_final %>%
+  rename(Weight_kg = gewicht_kg,
+         Patient_ID = medisch_dossier___business_sleutel,
+         bedindex = C___bedindex__administratief____business_sleutel) %>%
+  select(bedindex, Patient_ID, Weight_kg)
+
+weight_data_geriatry <- weight_data %>% filter(bedindex == "G")
+weight_data_surgical <- weight_data %>% filter(bedindex == "C")
+weight_data_pediatry <- weight_data %>% filter(bedindex == "E")
+
+```
+
+## 2. Create a dataset for patients' length
+
+This is an example dataset. In this step you should read in your file containing Length.
+Please make sure that you use the same terms for the dataset: `length_data`.
+
+This will provide you with 3 datasets: 
+
+- `length_data_geriatry`, 
+- `length_data_surgical`, 
+- `length_data_pediatry`
+ 
+This serves as an example: 
+
+- `height_data_geriatry <- data.frame( Patient_ID = 1:20, Height_m = c(1.65, 1.70, 1.75, 1.60, 1.72, 1.68, 1.80, 1.78, 1.73, 1.66, 1.71, 1.64, 1.69, 1.67, 1.82, 1.74, 1.83, 1.76, 1.81, 1.79) )`
+- repeat for surgical: `height_data_surgical`
+- repeartfor pediatry: `height_data_pediatry`
+
+
+```{r }
+
+
+
+height_data <- height_final %>%
+  mutate(Height_m = lengte_cm / 100) %>%
+  rename( Patient_ID = medisch_dossier___business_sleutel,
+          bedindex = C___bedindex__administratief____business_sleutel) %>%
+  select(bedindex, Patient_ID, Height_m)
+
+height_data_geriatry <- height_data %>% filter(bedindex == "G")
+height_data_surgical <- height_data %>% filter(bedindex == "C")
+height_data_pediatry <- height_data %>% filter(bedindex == "E")
+```
+
+## 3. Completeness
+
+**Calculate the percentage of missing values for length_data**
+
+```{r}
+
+completeness_score_height_geriatry <- (1 - mean(is.na(height_data_geriatry$Height_m))) * 100
+completeness_score_height_surgical <- (1 - mean(is.na(height_data_surgical$Height_m))) * 100
+completeness_score_height_pediatry <- (1 - mean(is.na(height_data_pediatry$Height_m))) * 100
+```
+
+
+**Calculate the percentage of missing values for weight_data**
+
+```{r}
+completeness_score_weight_geriatry <- (1 - mean(is.na(weight_data_geriatry$Weight_kg))) * 100
+completeness_score_weight_surgical <- (1 - mean(is.na(weight_data_surgical$Weight_kg))) * 100
+completeness_score_weight_pediatry <- (1 - mean(is.na(weight_data_pediatry$Weight_kg))) * 100
+```
+
+
+
+**Print the percentages of missing values**
+
+### Resuls COMPLETENESS
+
+**HEIGHT** 
+
+* Completeness score for height_data_geriatry: `r round(completeness_score_height_geriatry,2)`
+* Completeness score for height_data_surgical:  `r round(completeness_score_height_surgical,2)`
+* Completeness score for height_data_pediatry: `r round(completeness_score_height_pediatry,2)` 
+
+**WEIGHT**
+
+* Completeness score for weight_data_geriatry: `r round(completeness_score_weight_geriatry,2)` 
+* Completeness score for weight_data_surgical: `r round(completeness_score_weight_surgical,2)` 
+* Completeness score for weight_data_pediatry: `r  round(completeness_score_weight_pediatry,2)` 
+
+
+##  4. Consistency - WEIGHT - geriatry and surgical
+
+**Filter out missing values**
+```{r}
+weight_data_filtered_geriatry <- weight_data_geriatry %>%
+  filter(!is.na(Weight_kg))
+weight_data_filtered_surgical <- weight_data_surgical %>%
+  filter(!is.na(Weight_kg))
+```
+
+**Calculate the percentage of weight values within the specified range - GERIATRY**
+```{r}
+within_range_weight_geriatry <- weight_data_filtered_geriatry %>%
+  filter(Weight_kg >= 40, Weight_kg <= 160)
+
+percentage_within_range_weight_g <- (nrow(within_range_weight_geriatry) / nrow(weight_data_filtered_geriatry)) * 100
+percentage_outside_range_weight_g <- 100 - percentage_within_range_weight_g
+
+
+```
+
+
+
+**Calculate the percentage of weight values within the specified range - SURGICAL**
+```{r}
+within_range_weight_surgical <- weight_data_filtered_surgical %>%
+  filter(Weight_kg >= 40, Weight_kg <= 160)
+
+percentage_within_range_weight_s <- (nrow(within_range_weight_surgical) / nrow(weight_data_filtered_surgical)) * 100
+percentage_outside_range_weight_s <- 100 - percentage_within_range_weight_s
+
+
+```
+
+
+
+
+
+## 5. Consistency - WEIGHT - pediatry
+
+**Filter out missing values**
+
+```{r}
+weight_data_filtered_pediatry <- weight_data_pediatry %>%
+  filter(!is.na(Weight_kg))
+```
+
+**Calculate the percentage of weight values within the specified range - PEDIATRY**
+
+```{r}
+within_range_weight_pediatry <- weight_data_filtered_pediatry %>%
+  filter(Weight_kg >= 1, Weight_kg <= 80)
+
+percentage_within_range_weight_p <- (nrow(within_range_weight_pediatry) / nrow(weight_data_filtered_pediatry)) * 100
+percentage_outside_range_weight_p <- 100 - percentage_within_range_weight_p
+
+```
+
+
+
+## 5. Consistency - HEIGHT - geriatry and surgical
+
+**Filter out missing values**
+
+```{r}
+height_data_filtered_geriatry <- height_data_geriatry %>%
+  filter(!is.na(Height_m))
+height_data_filtered_surgical <- height_data_surgical %>%
+  filter(!is.na(Height_m))
+```
+
+
+**Calculate the percentage of height values within the specified range - GERIATRY**
+
+```{r}
+within_range_height_geriatry <- height_data_filtered_geriatry %>%
+  filter(Height_m >= 1.4, Height_m <= 2.2)
+
+percentage_within_range_height_geriatry <- (nrow(within_range_height_geriatry) / nrow(height_data_filtered_geriatry)) * 100
+percentage_outside_range_height_geriatry <- 100 - percentage_within_range_height_geriatry
+
+
+
+```
+
+
+**Calculate the percentage of height values within the specified range - SURGICAL**
+
+```{r}
+within_range_height_surgical <- height_data_filtered_surgical %>%
+  filter(Height_m >= 1.4, Height_m <= 2.2)
+
+percentage_within_range_height_surgical <- (nrow(within_range_height_surgical) / nrow(height_data_filtered_surgical)) * 100
+percentage_outside_range_height_surgical <- 100 - percentage_within_range_height_surgical
+
+```
+
+
+
+## 6. Consistency - HEIGHT - pediatry
+
+**Filter out missing values**
+
+```{r}
+height_data_filtered_pediatry <- height_data_pediatry %>%
+  filter(!is.na(Height_m))
+```
+
+**Calculate the percentage of height values within the specified range - PEDIATRY**
+
+```{r}
+within_range_height_pediatry <- height_data_filtered_pediatry %>%
+  filter(Height_m >= 0.40, Height_m <= 2)
+
+percentage_within_range_height_pediatry <- (nrow(within_range_height_pediatry) / nrow(height_data_filtered_pediatry)) * 100
+percentage_outside_range_height_pediatry <- 100 - percentage_within_range_height_pediatry
+
+
+```
+
+### Resuls CONSITENCY
+
+**WEIGHT**
+
+* Consistency score for weight GERIATRY - within range: `r round(percentage_within_range_weight_g,2)`
+* Consistency score for weight GERIATRY - outside range: `r round(percentage_outside_range_weight_g,2)`
+* Consistency score for weight SURGICAL - within range: `r round(percentage_within_range_weight_s,2)`
+* Consistency score for weight SURGICAL - outside range: `r round(percentage_outside_range_weight_s,2)`
+* Consistency score for weight PEDIATRY - within range: `r round(percentage_within_range_weight_p,2)`
+* Consistency score for weight PEDIATRY - outside range: `r round(percentage_outside_range_weight_p,2)`
+
+
+**HEIGHT** 
+
+* Consistency score for height GERIATRY - within range: `r round(percentage_within_range_height_geriatry,2)`
+* Consistency score for height GERIATRY - outside range: `r round(percentage_outside_range_height_geriatry,2)`
+* Consistency score for height SURGICAL - within range: `r round(percentage_within_range_height_surgical,2)`
+* Consistency score for height SURGICAL - outside range: `r round(percentage_outside_range_height_surgical,2)`
+* Consistency score for height PEDIATRY - within range: `r round(percentage_within_range_height_pediatry,2)`
+* Consistency score for height PEDIATRY - outside range: `r round(percentage_outside_range_height_pediatry,2)`
+
